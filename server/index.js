@@ -167,6 +167,58 @@ app.get('/api/entries/:id', (req, res) => {
 });
 
 
+// GET all users as foremen (or filter if you have roles)
+app.get('/api/foremen', (req, res) => {
+  db.all('SELECT id, username FROM users ORDER BY username', [], (err, rows) => {
+    if (err) return res.status(500).json({ success: false, error: 'Failed to fetch foremen' });
+    res.json(rows);
+  });
+});
+
+// GET distinct properties from entries
+app.get('/api/properties', (req, res) => {
+  db.all('SELECT DISTINCT propertyName FROM entries WHERE propertyName IS NOT NULL ORDER BY propertyName', [], (err, rows) => {
+    if (err) return res.status(500).json({ success: false, error: 'Failed to fetch properties' });
+    // map to array of strings
+    res.json(rows.map(r => r.propertyName));
+  });
+});
+
+// GET filtered entries with optional filters and limit 25
+app.get('/api/entries', (req, res) => {
+  let { foremanId, propertyName, weekStart } = req.query;
+  let conditions = [];
+  let params = [];
+
+  if (foremanId) {
+    conditions.push('foremanId = ?');
+    params.push(foremanId);
+  }
+  if (propertyName) {
+    conditions.push('propertyName = ?');
+    params.push(propertyName);
+  }
+  if (weekStart) {
+    // weekStart expected as yyyy-mm-dd (Sunday)
+    // filter entries between weekStart and weekStart + 6 days (Saturday)
+    const startDate = weekStart;
+    const endDate = new Date(new Date(weekStart).getTime() + 6 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10);
+    conditions.push('date BETWEEN ? AND ?');
+    params.push(startDate, endDate);
+  }
+
+  let whereClause = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+
+  const sql = `SELECT * FROM entries ${whereClause} ORDER BY date DESC LIMIT 25`;
+
+  db.all(sql, params, (err, rows) => {
+    if (err) return res.status(500).json({ success: false, error: 'Failed to fetch entries' });
+    res.json(rows);
+  });
+});
+
 
 
 const PORT = 5000;

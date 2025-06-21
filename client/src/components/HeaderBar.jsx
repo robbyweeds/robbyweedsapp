@@ -1,50 +1,37 @@
 import React from "react";
-import { Box, Flex, Heading, Spacer, Text, Button, Image } from "@chakra-ui/react";
+import { Box, Flex, Text, Button, Spacer } from "@chakra-ui/react";
 import { useNavigate } from "react-router-dom";
 
-function HeaderBar({ title, user }) {
+function HeaderBar({ title }) {
   const navigate = useNavigate();
-
-  const now = new Date();
-  const dateString = now.toLocaleDateString();
-  const timeString = now.toLocaleTimeString();
 
   return (
     <Flex
-      bg="blue.600"
+      as="header"
+      bg="teal.600"
       color="white"
-      px={4}
-      py={3}
       align="center"
+      padding="12px 24px"
       boxShadow="md"
-      mb={4}
-      wrap="wrap"
+      position="sticky"
+      top="0"
+      zIndex="1000"
     >
-      <Image
-        src={require("../ShearonLogo.jpg")}
-        alt="Logo"
-        boxSize="40px"
-        objectFit="contain"
-        mr={3}
-      />
-      <Heading size="md" mr={5} whiteSpace="nowrap">
+      <Text fontSize="xl" fontWeight="bold">
         {title}
-      </Heading>
-
+      </Text>
       <Spacer />
-
-      <Text fontSize="lg" fontWeight="bold" mr={5} whiteSpace="nowrap">
-        Logged in: {user?.username || "Guest"}
-      </Text>
-      <Text mr={5} whiteSpace="nowrap">
-        {dateString} {timeString}
-      </Text>
-
       <Button
-        colorScheme="teal"
-        variant="outline"
-        size="sm"
         onClick={() => navigate("/main")}
+        colorScheme="orange"
+        size="md"
+        fontWeight="bold"
+        _hover={{ bg: "orange.400" }}
+        _active={{ bg: "orange.500" }}
+        borderRadius="md"
+        boxShadow="md"
+        // Optionally, add a slight animation or scale effect on hover/focus
+        _focus={{ boxShadow: "outline" }}
       >
         Dashboard
       </Button>

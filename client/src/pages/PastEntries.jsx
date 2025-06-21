@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import {
   Box,
-  Heading,
+  Select,
   Table,
   Thead,
   Tbody,
@@ -11,53 +11,144 @@ import {
   Spinner,
   Button,
   Text,
+  Flex,
+  Heading,
 } from "@chakra-ui/react";
 import { useNavigate } from "react-router-dom";
 import HeaderBar from "../components/HeaderBar";
 
 function PastEntries() {
-  const [entries, setEntries] = useState(null); // null = loading state
+  const [entries, setEntries] = useState(null);
   const [error, setError] = useState(null);
+
+  const [foremen, setForemen] = useState([]);
+  const [properties, setProperties] = useState([]);
+
+  const [selectedForeman, setSelectedForeman] = useState("");
+  const [selectedProperty, setSelectedProperty] = useState("");
+  const [selectedWeek, setSelectedWeek] = useState(""); // e.g. '2025-06-15' (week start)
+
   const navigate = useNavigate();
 
+  // Fetch Foremen and Properties once
   useEffect(() => {
-    fetch("http://localhost:5000/api/entries/latest")
+    fetch("/api/foremen")
+      .then((res) => res.json())
+      .then(setForemen)
+      .catch(console.error);
+
+    fetch("/api/properties")
+      .then((res) => res.json())
+      .then(setProperties)
+      .catch(console.error);
+  }, []);
+
+  // Fetch entries filtered by selections
+  useEffect(() => {
+    setEntries(null); // loading state
+    setError(null);
+
+    // Build query params
+    const params = new URLSearchParams();
+    if (selectedForeman) params.append("foremanId", selectedForeman);
+    if (selectedProperty) params.append("propertyName", selectedProperty);
+    if (selectedWeek) params.append("weekStart", selectedWeek);
+
+    fetch("/api/entries?" + params.toString())
       .then((res) => {
         if (!res.ok) throw new Error("Network response was not ok");
         return res.json();
       })
       .then((data) => {
-        console.log("Fetched entries:", data); // Add this!
         setEntries(data);
-        setError(null);
       })
       .catch((err) => {
         console.error("Fetch error:", err);
         setError("Failed to load past entries.");
         setEntries([]);
       });
-  }, []);
+  }, [selectedForeman, selectedProperty, selectedWeek]);
 
-  if (entries === null) {
-    return (
-      <Box p={4} textAlign="center" mt={20}>
-        <HeaderBar title="Past Timesheets" />
-        <Spinner size="xl" />
-      </Box>
-    );
-  }
+  // Helper: generate week options (last 12 weeks)
+  const generateWeekOptions = () => {
+    const weeks = [];
+    const now = new Date();
+    // get last Sunday for current week start
+    const getWeekStartDate = (date) => {
+      const d = new Date(date);
+      const day = d.getDay();
+      d.setDate(d.getDate() - day);
+      return d;
+    };
+
+    for (let i = 0; i < 12; i++) {
+      const d = getWeekStartDate(now);
+      d.setDate(d.getDate() - i * 7);
+      weeks.push(d.toISOString().slice(0, 10)); // yyyy-mm-dd
+    }
+    return weeks;
+  };
 
   return (
     <Box p={4}>
       <HeaderBar title="Past Timesheets" />
 
-      {error && (
-        <Text color="red.500" mb={4}>
-          {error}
-        </Text>
-      )}
+      <Heading size="md" mb={4}>
+        Filter Entries
+      </Heading>
 
-      {entries.length === 0 ? (
+      <Flex gap={4} mb={6} flexWrap="wrap">
+        <Box minWidth="180px">
+          <Text mb={1}>Foreman</Text>
+          <Select
+            placeholder="All Foremen"
+            value={selectedForeman}
+            onChange={(e) => setSelectedForeman(e.target.value)}
+          >
+            {foremen.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.username}
+              </option>
+            ))}
+          </Select>
+        </Box>
+
+        <Box minWidth="180px">
+          <Text mb={1}>Property</Text>
+          <Select
+            placeholder="All Properties"
+            value={selectedProperty}
+            onChange={(e) => setSelectedProperty(e.target.value)}
+          >
+            {properties.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </Select>
+        </Box>
+
+        <Box minWidth="180px">
+          <Text mb={1}>Week Starting</Text>
+          <Select
+            placeholder="All Weeks"
+            value={selectedWeek}
+            onChange={(e) => setSelectedWeek(e.target.value)}
+          >
+            {generateWeekOptions().map((week) => (
+              <option key={week} value={week}>
+                {week}
+              </option>
+            ))}
+          </Select>
+        </Box>
+      </Flex>
+
+      {entries === null ? (
+        <Spinner size="xl" />
+      ) : error ? (
+        <Text color="red.500">{error}</Text>
+      ) : entries.length === 0 ? (
         <Text>No past entries found.</Text>
       ) : (
         <Box overflowX="auto" bg="gray.50" p={4} borderRadius="md" border="1px solid #e2e8f0">
@@ -69,6 +160,8 @@ function PastEntries() {
                 <Th>Time Out</Th>
                 <Th>Total Hours</Th>
                 <Th>Comment</Th>
+                <Th>Foreman</Th>
+                <Th>Property</Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -79,6 +172,8 @@ function PastEntries() {
                   <Td>{entry.timeOut}</Td>
                   <Td>{entry.totalHours}</Td>
                   <Td>{entry.comment}</Td>
+                  <Td>{foremen.find((f) => f.id === entry.foremanId)?.username || "N/A"}</Td>
+                  <Td>{entry.propertyName || "N/A"}</Td>
                 </Tr>
               ))}
             </Tbody>
