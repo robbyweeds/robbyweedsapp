@@ -1,12 +1,14 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Box, Input, Button, Heading, VStack, FormControl, FormLabel, useToast } from "@chakra-ui/react";
+import { useUser } from "../context/UserContext"; // Adjust path if needed
 
 function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const navigate = useNavigate();
   const toast = useToast();
+  const { setUser } = useUser();
 
   const handleLogin = async () => {
     try {
@@ -18,6 +20,7 @@ function Login() {
       const data = await res.json();
       if (data.success) {
         localStorage.setItem("user", JSON.stringify(data.user));
+        setUser(data.user); // Update context user state
         navigate("/main");
       } else {
         toast({
@@ -47,7 +50,11 @@ function Login() {
       <VStack spacing={4}>
         <FormControl>
           <FormLabel>Username</FormLabel>
-          <Input placeholder="Enter username" value={username} onChange={(e) => setUsername(e.target.value)} />
+          <Input
+            placeholder="Enter username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+          />
         </FormControl>
         <FormControl>
           <FormLabel>Password</FormLabel>
