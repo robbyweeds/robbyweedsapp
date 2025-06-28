@@ -15,6 +15,27 @@ import {
 import { useNavigate } from "react-router-dom";
 import HeaderBar from "../components/HeaderBar";
 
+// Helper to format date string "YYYY-MM-DD" to "Day MM/DD/YYYY"
+function formatDateWithDay(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  if (isNaN(d)) return dateStr;
+  const options = { weekday: "short", month: "2-digit", day: "2-digit", year: "numeric" };
+  return d.toLocaleDateString(undefined, options);
+}
+
+// Helper to format time "HH:mm" to "h:mm AM/PM"
+function formatTimeHM(timeStr) {
+  if (!timeStr) return "";
+  const [hourStr, minStr] = timeStr.split(":");
+  if (hourStr === undefined || minStr === undefined) return timeStr;
+  let hour = parseInt(hourStr, 10);
+  const minute = minStr;
+  const ampm = hour >= 12 ? "PM" : "AM";
+  hour = hour % 12 || 12;
+  return `${hour}:${minute} ${ampm}`;
+}
+
 function Main() {
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -60,16 +81,26 @@ function Main() {
                 <Th>Time Out</Th>
                 <Th>Total Hours</Th>
                 <Th>Comment</Th>
+                <Th>Foreman</Th>
+                <Th>Property</Th>
+                <Th>Edit</Th>
               </Tr>
             </Thead>
             <Tbody>
               {entries.map((entry) => (
                 <Tr key={entry.id}>
-                  <Td>{entry.date}</Td>
-                  <Td>{entry.timeIn}</Td>
-                  <Td>{entry.timeOut}</Td>
+                  <Td>{formatDateWithDay(entry.date)}</Td>
+                  <Td>{formatTimeHM(entry.timeIn)}</Td>
+                  <Td>{formatTimeHM(entry.timeOut)}</Td>
                   <Td>{entry.totalHours}</Td>
-                  <Td>{entry.comment}</Td>
+                  <Td>{entry.comment || ""}</Td>
+                  <Td>{entry.foreman || "N/A"}</Td>
+                  <Td>{entry.propertyName || "N/A"}</Td>
+                  <Td>
+                    <Button size="sm" colorScheme="blue" onClick={() => navigate(`/edit/${entry.id}`)}>
+                      Edit
+                    </Button>
+                  </Td>
                 </Tr>
               ))}
             </Tbody>

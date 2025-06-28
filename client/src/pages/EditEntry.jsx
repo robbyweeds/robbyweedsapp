@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Box,
   Heading,
@@ -19,23 +19,11 @@ import {
   Th,
   Td,
   useToast,
-  Spinner
+  Spinner,
 } from "@chakra-ui/react";
 import { useNavigate, useParams } from "react-router-dom";
+import LivePreviewTable from "../components/LivePreviewTable";
 import HeaderBar from "../components/HeaderBar";
-
-const employees = [
-  "John Doe",
-  "Jane Smith",
-  "Mike Johnson",
-  "Emily Davis",
-  "Chris Lee",
-  "Sara White",
-  "David Brown",
-  "Anna Wilson",
-  "Tom Clark",
-  "Nancy Green",
-];
 
 const timeOptions = Array.from({ length: 96 }, (_, i) => {
   const hour = Math.floor(i / 4);
@@ -48,60 +36,129 @@ const timeOptions = Array.from({ length: 96 }, (_, i) => {
   };
 });
 
+// Helper to format date string "YYYY-MM-DD" to "Day MM/DD/YYYY"
+function formatDateWithDay(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  if (isNaN(d)) return dateStr;
+  const options = { weekday: "short", month: "2-digit", day: "2-digit", year: "numeric" };
+  return d.toLocaleDateString(undefined, options);
+}
+
+// Helper to format time "HH:mm" to "h:mm AM/PM"
+function formatTimeHM(timeStr) {
+  if (!timeStr) return "";
+  const [hourStr, minStr] = timeStr.split(":");
+  if (hourStr === undefined || minStr === undefined) return timeStr;
+  let hour = parseInt(hourStr, 10);
+  const minute = minStr;
+  const ampm = hour >= 12 ? "PM" : "AM";
+  hour = hour % 12 || 12;
+  return `${hour}:${minute} ${ampm}`;
+}
+
 function EditEntry() {
   const { id } = useParams();
+  const [foremen, setForemen] = useState([]);
   const [entry, setEntry] = useState(null);
+  const [loading, setLoading] = useState(true);
   const toast = useToast();
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetch(`http://localhost:5000/api/entries/${id}`)
+    fetch("http://localhost:5000/api/foremen")
       .then((res) => res.json())
+      .then(setForemen)
+      .catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    if (!id) return;
+    fetch(`http://localhost:5000/api/entries/${id}`)
+      .then((res) => {
+        if (!res.ok) throw new Error("Entry not found");
+        return res.json();
+      })
       .then((data) => {
-        // Prepare workers array from employeeTimes and hoursData
-        const workers = [];
-        for (let i = 0; i < 7; i++) {
-          if (i === 0) {
-            workers.push({
-              name: data.foremanId || data.foreman || "",
-              start: data.employeeTimes?.[data.foremanId]?.timeIn || "",
-              end: data.employeeTimes?.[data.foremanId]?.timeOut || "",
-              miscellaneous: data.hoursData?.[data.foremanId]?.miscellaneous || 0,
-              smallPower: data.hoursData?.[data.foremanId]?.smallPower || 0,
-              machine: data.hoursData?.[data.foremanId]?.machine || 0,
-              lunch: data.hoursData?.[data.foremanId]?.lunch || 0,
+        const workersArr = [];
+
+        if (data.employeeTimes && data.hoursData) {
+          const employeeIds = Object.keys(data.employeeTimes);
+          employeeIds.forEach((empId) => {
+            workersArr.push({
+              id: empId,
+              name: foremen.find((f) => f.id.toString() === empId)?.username || "",
+              start: data.employeeTimes[empId]?.timeIn || "",
+              end: data.employeeTimes[empId]?.timeOut || "",
+              miscellaneous: data.hoursData[empId]?.miscellaneous ?? 0,
+              smallPower: data.hoursData[empId]?.smallPower ?? 0,
+              machine: data.hoursData[empId]?.machine ?? 0,
+              lunch: data.hoursData[empId]?.lunch ?? 0,
             });
-          } else {
-            // Fill others with empty or data if present
-            const empName = employees[i] || "";
-            workers.push({
-              name: empName,
-              start: data.employeeTimes?.[empName]?.timeIn || "",
-              end: data.employeeTimes?.[empName]?.timeOut || "",
-              miscellaneous: data.hoursData?.[empName]?.miscellaneous || 0,
-              smallPower: data.hoursData?.[empName]?.smallPower || 0,
-              machine: data.hoursData?.[empName]?.machine || 0,
-              lunch: data.hoursData?.[empName]?.lunch || 0,
-            });
-          }
+          });
         }
 
-        setEntry({ ...data, workers });
-      });
-  }, [id]);
+        while (workersArr.length < 7) {
+          workersArr.push({
+            id: "",
+            name: "",
+            start: "",
+            end: "",
+            miscellaneous: 0,
+            smallPower: 0,
+            machine: 0,
+            lunch: 0,
+          });
+        }
 
-  // When foreman changes, update first worker name
+        setEntry({
+          date: data.date || "",
+          timeIn: data.timeIn || "",
+          timeOut: data.timeOut || "",
+          comment: data.comment || "",
+          foremanId: data.foremanId ? data.foremanId.toString() : "",
+          property: data.propertyName || "",
+          workers: workersArr,
+        });
+
+        setLoading(false);
+      })
+      .catch((err) => {
+        toast({
+          title: "Error loading entry",
+          description: err.message,
+          status: "error",
+          duration: 3000,
+          isClosable: true,
+        });
+        setLoading(false);
+      });
+  }, [id, foremen, toast]);
+
   useEffect(() => {
-    if (!entry) return;
+    if (!entry || !entry.foremanId) return;
+    const selectedForeman = foremen.find((f) => f.id.toString() === entry.foremanId);
     setEntry((prev) => {
+      if (!prev) return prev;
       const newWorkers = [...prev.workers];
-      newWorkers[0] = { ...newWorkers[0], name: prev.foreman || "" };
+      newWorkers[0] = selectedForeman
+        ? { ...newWorkers[0], id: selectedForeman.id, name: selectedForeman.username }
+        : { ...newWorkers[0], id: "", name: "" };
       return { ...prev, workers: newWorkers };
     });
-  }, [entry?.foreman]);
+  }, [entry?.foremanId, foremen]);
+
+  if (loading || !entry) {
+    return (
+      <Box p={4} maxW="1000px" mx="auto">
+        <HeaderBar title="Edit Entry" />
+        <Spinner size="xl" />
+      </Box>
+    );
+  }
 
   const totalWorkHours = () => {
-    if (!entry?.timeIn || !entry?.timeOut) return "0.00";
+    if (!entry.timeIn || !entry.timeOut) return "0.00";
     const [h1, m1] = entry.timeIn.split(":").map(Number);
     const [h2, m2] = entry.timeOut.split(":").map(Number);
     const start = h1 * 60 + m1;
@@ -110,23 +167,25 @@ function EditEntry() {
     return ((end - start) / 60).toFixed(2);
   };
 
-  const updateWorker = (idx, field, value) => {
+  const updateWorker = (idx, fieldOrObject, value) => {
     const newWorkers = [...entry.workers];
-    newWorkers[idx] = { ...newWorkers[idx], [field]: value };
+    if (typeof fieldOrObject === "string") {
+      newWorkers[idx] = { ...newWorkers[idx], [fieldOrObject]: value };
+    } else {
+      newWorkers[idx] = { ...newWorkers[idx], ...fieldOrObject };
+    }
     setEntry({ ...entry, workers: newWorkers });
   };
 
-  const handleSave = async () => {
-    if (!entry) return;
-
+  const handleSubmit = async () => {
     const totalHours = totalWorkHours();
-
     const employeeTimes = {};
     const hoursData = {};
+
     entry.workers.forEach((w) => {
-      if (w.name) {
-        employeeTimes[w.name] = { timeIn: w.start, timeOut: w.end };
-        hoursData[w.name] = {
+      if (w.id) {
+        employeeTimes[w.id] = { timeIn: w.start, timeOut: w.end };
+        hoursData[w.id] = {
           miscellaneous: parseFloat(w.miscellaneous),
           smallPower: parseFloat(w.smallPower),
           machine: parseFloat(w.machine),
@@ -140,30 +199,78 @@ function EditEntry() {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...entry,
+          date: entry.date,
+          timeIn: entry.timeIn,
+          timeOut: entry.timeOut,
           totalHours,
-          foremanId: entry.foreman, // Adjust backend accordingly
+          comment: entry.comment,
+          foremanId: entry.foremanId,
+          propertyName: entry.property,
           employeeTimes,
           hoursData,
         }),
       });
 
-      if (!res.ok) throw new Error("Failed to save");
-
-      toast({ title: "Entry updated", status: "success", duration: 3000, isClosable: true });
+      if (!res.ok) throw new Error("Failed to update");
+      toast({
+        title: "Entry updated",
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
       navigate("/main");
     } catch (err) {
-      toast({ title: "Error saving entry", status: "error", duration: 3000, isClosable: true });
+      toast({
+        title: "Error updating entry",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
     }
   };
 
-  if (!entry) return <Spinner size="xl" m={10} />;
+  const handleDelete = async () => {
+    try {
+      const res = await fetch(`http://localhost:5000/api/entries/${id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error("Failed to delete");
+      toast({
+        title: "Entry deleted",
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+      navigate("/main");
+    } catch (err) {
+      toast({
+        title: "Error deleting entry",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  };
 
   return (
-    <Box p={4} maxW="900px" mx="auto">
+    <Box p={4} maxW="1000px" mx="auto">
       <HeaderBar title="Edit Entry" />
-      <Box bg="gray.50" p={6} borderWidth={1} borderRadius="md" boxShadow="md" overflowX="auto">
+      <Box
+        bg="gray.50"
+        p={6}
+        borderWidth={1}
+        borderRadius="md"
+        boxShadow="md"
+        overflowX="auto"
+      >
+        <Box mb={4} display="flex" justifyContent="flex-end">
+          <Button colorScheme="red" onClick={handleDelete}>
+            Delete Entry
+          </Button>
+        </Box>
+
         <Heading mb={6}>Edit Timesheet Entry</Heading>
+
         <Grid templateColumns="repeat(4, 1fr)" gap={4} mb={4}>
           <GridItem colSpan={1}>
             <FormControl>
@@ -220,12 +327,12 @@ function EditEntry() {
               <FormLabel>Foreman</FormLabel>
               <Select
                 placeholder="Select Foreman"
-                value={entry.foreman}
-                onChange={(e) => setEntry({ ...entry, foreman: e.target.value })}
+                value={entry.foremanId.toString()}
+                onChange={(e) => setEntry({ ...entry, foremanId: e.target.value })}
               >
-                {employees.map((emp) => (
-                  <option key={emp} value={emp}>
-                    {emp}
+                {foremen.map((f) => (
+                  <option key={f.id} value={f.id.toString()}>
+                    {f.username}
                   </option>
                 ))}
               </Select>
@@ -235,8 +342,8 @@ function EditEntry() {
             <FormControl>
               <FormLabel>Property</FormLabel>
               <Input
-                value={entry.propertyName || ""}
-                onChange={(e) => setEntry({ ...entry, propertyName: e.target.value })}
+                value={entry.property}
+                onChange={(e) => setEntry({ ...entry, property: e.target.value })}
                 placeholder="Property Name"
               />
             </FormControl>
@@ -262,16 +369,33 @@ function EditEntry() {
               <Tr key={idx}>
                 <Td>
                   {idx === 0 ? (
-                    <Input isReadOnly value={entry.foreman} />
+                    <Input
+                      isReadOnly
+                      value={
+                        foremen.find((f) => f.id.toString() === entry.foremanId)
+                          ?.username || ""
+                      }
+                      placeholder="Foreman"
+                    />
                   ) : (
                     <Select
                       placeholder="Select Worker"
-                      value={worker.name}
-                      onChange={(e) => updateWorker(idx, "name", e.target.value)}
+                      value={worker.id ? worker.id.toString() : ""}
+                      onChange={(e) => {
+                        const selectedId = e.target.value;
+                        const selectedUser = foremen.find(
+                          (f) => f.id.toString() === selectedId
+                        );
+                        updateWorker(idx, {
+                          id: selectedUser ? selectedUser.id : "",
+                          name: selectedUser ? selectedUser.username : "",
+                        });
+                      }}
                     >
-                      {employees.map((emp) => (
-                        <option key={emp} value={emp}>
-                          {emp}
+                      <option value="">Select Worker</option>
+                      {foremen.map((f) => (
+                        <option key={f.id} value={f.id.toString()}>
+                          {f.username}
                         </option>
                       ))}
                     </Select>
@@ -325,15 +449,17 @@ function EditEntry() {
         <FormControl mt={6}>
           <FormLabel>Comment</FormLabel>
           <Textarea
-            value={entry.comment || ""}
+            value={entry.comment}
             onChange={(e) => setEntry({ ...entry, comment: e.target.value })}
             placeholder="Optional notes"
           />
         </FormControl>
 
-        <Button mt={6} colorScheme="blue" onClick={handleSave}>
-          Save Entry & Return to Dashboard
+        <Button mt={6} colorScheme="blue" onClick={handleSubmit}>
+          Save Changes & Return to Dashboard
         </Button>
+
+        <LivePreviewTable entry={entry} totalWorkHours={totalWorkHours} />
       </Box>
     </Box>
   );

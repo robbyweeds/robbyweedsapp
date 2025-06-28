@@ -22,20 +22,8 @@ import {
   useToast,
 } from "@chakra-ui/react";
 import { useNavigate } from "react-router-dom";
+import LivePreviewTable from "../components/LivePreviewTable";
 import HeaderBar from "../components/HeaderBar";
-
-const employees = [
-  "John Doe",
-  "Jane Smith",
-  "Mike Johnson",
-  "Emily Davis",
-  "Chris Lee",
-  "Sara White",
-  "David Brown",
-  "Anna Wilson",
-  "Tom Clark",
-  "Nancy Green",
-];
 
 const timeOptions = Array.from({ length: 96 }, (_, i) => {
   const hour = Math.floor(i / 4);
@@ -43,20 +31,45 @@ const timeOptions = Array.from({ length: 96 }, (_, i) => {
   const suffix = hour < 12 ? "AM" : "PM";
   const h12 = ((hour + 11) % 12) + 1;
   return {
-    value: `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`,
+    value: `${hour.toString().padStart(2, "0")}:${minute
+      .toString()
+      .padStart(2, "0")}`,
     label: `${h12}:${minute.toString().padStart(2, "0")} ${suffix}`,
   };
 });
 
+// Helper to format date string "YYYY-MM-DD" to "Day MM/DD/YYYY"
+function formatDateWithDay(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  if (isNaN(d)) return dateStr;
+  const options = { weekday: "short", month: "2-digit", day: "2-digit", year: "numeric" };
+  return d.toLocaleDateString(undefined, options);
+}
+
+// Helper to format time "HH:mm" to "h:mm AM/PM"
+function formatTimeHM(timeStr) {
+  if (!timeStr) return "";
+  const [hourStr, minStr] = timeStr.split(":");
+  if (hourStr === undefined || minStr === undefined) return timeStr;
+  let hour = parseInt(hourStr, 10);
+  const minute = minStr;
+  const ampm = hour >= 12 ? "PM" : "AM";
+  hour = hour % 12 || 12;
+  return `${hour}:${minute} ${ampm}`;
+}
+
 function CreateEntry() {
+  const [foremen, setForemen] = useState([]);
   const [entry, setEntry] = useState({
     date: "",
     timeIn: "",
     timeOut: "",
     comment: "",
-    foreman: "",
+    foremanId: "", // ID of foreman selected
     property: "",
     workers: Array(7).fill({
+      id: "",
       name: "",
       start: "",
       end: "",
@@ -70,14 +83,36 @@ function CreateEntry() {
   const toast = useToast();
   const navigate = useNavigate();
 
-  // When foreman changes, update first worker.name to foreman
   useEffect(() => {
+    fetch("http://localhost:5000/api/foremen")
+      .then((res) => res.json())
+      .then((data) => setForemen(data))
+      .catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    if (!entry.foremanId) return;
+    const selectedForeman = foremen.find(
+      (f) => f.id.toString() === entry.foremanId.toString()
+    );
     setEntry((prev) => {
       const newWorkers = [...prev.workers];
-      newWorkers[0] = { ...newWorkers[0], name: prev.foreman };
+      if (selectedForeman) {
+        newWorkers[0] = {
+          ...newWorkers[0],
+          id: selectedForeman.id,
+          name: selectedForeman.username,
+        };
+      } else {
+        newWorkers[0] = {
+          ...newWorkers[0],
+          id: "",
+          name: "",
+        };
+      }
       return { ...prev, workers: newWorkers };
     });
-  }, [entry.foreman]);
+  }, [entry.foremanId, foremen]);
 
   const totalWorkHours = () => {
     if (!entry.timeIn || !entry.timeOut) return "0.00";
@@ -89,16 +124,26 @@ function CreateEntry() {
     return ((end - start) / 60).toFixed(2);
   };
 
+  const updateWorker = (idx, fieldOrObject, value) => {
+    const newWorkers = [...entry.workers];
+    if (typeof fieldOrObject === "string") {
+      newWorkers[idx] = { ...newWorkers[idx], [fieldOrObject]: value };
+    } else {
+      newWorkers[idx] = { ...newWorkers[idx], ...fieldOrObject };
+    }
+    setEntry({ ...entry, workers: newWorkers });
+  };
+
   const handleSubmit = async () => {
     const totalHours = totalWorkHours();
 
-    // Prepare data to send with employeeTimes and hoursData keyed by employee name
     const employeeTimes = {};
     const hoursData = {};
+
     entry.workers.forEach((w) => {
-      if (w.name) {
-        employeeTimes[w.name] = { timeIn: w.start, timeOut: w.end };
-        hoursData[w.name] = {
+      if (w.id) {
+        employeeTimes[w.id] = { timeIn: w.start, timeOut: w.end };
+        hoursData[w.id] = {
           miscellaneous: parseFloat(w.miscellaneous),
           smallPower: parseFloat(w.smallPower),
           machine: parseFloat(w.machine),
@@ -112,9 +157,13 @@ function CreateEntry() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...entry,
+          date: entry.date,
+          timeIn: entry.timeIn,
+          timeOut: entry.timeOut,
           totalHours,
-          foremanId: entry.foreman, // Adjust backend to accept username or map later
+          comment: entry.comment,
+          foremanId: entry.foremanId,
+          propertyName: entry.property,
           employeeTimes,
           hoursData,
         }),
@@ -122,23 +171,34 @@ function CreateEntry() {
 
       if (!res.ok) throw new Error("Failed to save");
 
-      toast({ title: "Entry saved", status: "success", duration: 3000, isClosable: true });
+      toast({
+        title: "Entry saved",
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
       navigate("/main");
     } catch (err) {
-      toast({ title: "Error saving entry", status: "error", duration: 3000, isClosable: true });
+      toast({
+        title: "Error saving entry",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
     }
   };
 
-  const updateWorker = (idx, field, value) => {
-    const newWorkers = [...entry.workers];
-    newWorkers[idx] = { ...newWorkers[idx], [field]: value };
-    setEntry({ ...entry, workers: newWorkers });
-  };
-
   return (
-    <Box p={4} maxW="900px" mx="auto">
+    <Box p={4} maxW="1000px" mx="auto">
       <HeaderBar title="Create Entry" />
-      <Box bg="gray.50" p={6} borderWidth={1} borderRadius="md" boxShadow="md" overflowX="auto">
+      <Box
+        bg="gray.50"
+        p={6}
+        borderWidth={1}
+        borderRadius="md"
+        boxShadow="md"
+        overflowX="auto"
+      >
         <Heading mb={6}>Create Timesheet Entry</Heading>
         <Grid templateColumns="repeat(4, 1fr)" gap={4} mb={4}>
           <GridItem colSpan={1}>
@@ -196,12 +256,14 @@ function CreateEntry() {
               <FormLabel>Foreman</FormLabel>
               <Select
                 placeholder="Select Foreman"
-                value={entry.foreman}
-                onChange={(e) => setEntry({ ...entry, foreman: e.target.value })}
+                value={entry.foremanId.toString()}
+                onChange={(e) =>
+                  setEntry({ ...entry, foremanId: e.target.value })
+                }
               >
-                {employees.map((emp) => (
-                  <option key={emp} value={emp}>
-                    {emp}
+                {foremen.map((f) => (
+                  <option key={f.id} value={f.id.toString()}>
+                    {f.username}
                   </option>
                 ))}
               </Select>
@@ -238,16 +300,33 @@ function CreateEntry() {
               <Tr key={idx}>
                 <Td>
                   {idx === 0 ? (
-                    <Input isReadOnly value={entry.foreman} />
+                    <Input
+                      isReadOnly
+                      value={
+                        foremen.find((f) => f.id.toString() === entry.foremanId)
+                          ?.username || ""
+                      }
+                      placeholder="Foreman"
+                    />
                   ) : (
                     <Select
                       placeholder="Select Worker"
-                      value={worker.name}
-                      onChange={(e) => updateWorker(idx, "name", e.target.value)}
+                      value={worker.id ? worker.id.toString() : ""}
+                      onChange={(e) => {
+                        const selectedId = e.target.value;
+                        const selectedUser = foremen.find(
+                          (f) => f.id.toString() === selectedId
+                        );
+                        updateWorker(idx, {
+                          id: selectedUser ? selectedUser.id : "",
+                          name: selectedUser ? selectedUser.username : "",
+                        });
+                      }}
                     >
-                      {employees.map((emp) => (
-                        <option key={emp} value={emp}>
-                          {emp}
+                      <option value="">Select Worker</option>
+                      {foremen.map((f) => (
+                        <option key={f.id} value={f.id.toString()}>
+                          {f.username}
                         </option>
                       ))}
                     </Select>
@@ -279,20 +358,22 @@ function CreateEntry() {
                     ))}
                   </Select>
                 </Td>
-                {["miscellaneous", "smallPower", "machine", "lunch"].map((cat) => (
-                  <Td key={cat}>
-                    <Select
-                      value={worker[cat]}
-                      onChange={(e) => updateWorker(idx, cat, e.target.value)}
-                    >
-                      {[...Array(17).keys()].map((n) => (
-                        <option key={n} value={n * 0.25}>
-                          {(n * 0.25).toFixed(2)}
-                        </option>
-                      ))}
-                    </Select>
-                  </Td>
-                ))}
+                {["miscellaneous", "smallPower", "machine", "lunch"].map(
+                  (cat) => (
+                    <Td key={cat}>
+                      <Select
+                        value={worker[cat]}
+                        onChange={(e) => updateWorker(idx, cat, e.target.value)}
+                      >
+                        {[...Array(17).keys()].map((n) => (
+                          <option key={n} value={n * 0.25}>
+                            {(n * 0.25).toFixed(2)}
+                          </option>
+                        ))}
+                      </Select>
+                    </Td>
+                  )
+                )}
               </Tr>
             ))}
           </Tbody>
@@ -308,8 +389,10 @@ function CreateEntry() {
         </FormControl>
 
         <Button mt={6} colorScheme="blue" onClick={handleSubmit}>
-          Save Entry & Return to Dashboard
+          Save & Return to Dashboard
         </Button>
+
+        <LivePreviewTable entry={entry} totalWorkHours={totalWorkHours} />
       </Box>
     </Box>
   );

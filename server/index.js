@@ -67,6 +67,104 @@ db.serialize(() => {
   });
 });
 
+
+//  INSER FAKE EMPLOYEES
+
+const employeeNames = [
+  "John Doe",
+  "Jane Smith",
+  "Mike Johnson",
+  "Emily Davis",
+  "Chris Lee",
+  "Sara White",
+  "David Brown",
+  "Anna Wilson",
+  "Tom Clark",
+  "Nancy Green"
+];
+
+employeeNames.forEach(name => {
+  db.run(`INSERT OR IGNORE INTO users (username, password) VALUES (?, ?)`, [name, "defaultpw"]);
+});
+
+
+// GET all employees
+app.get('/api/employees', (req, res) => {
+  db.all('SELECT id, username FROM users ORDER BY username', [], (err, rows) => {
+    if (err) return res.status(500).json({ success: false, error: 'Failed to fetch employees' });
+    res.json(rows);
+  });
+});
+
+
+
+// Update existing entry by id
+app.put('/api/entries/:id', (req, res) => {
+  const entryId = req.params.id;
+  const {
+    date,
+    timeIn,
+    timeOut,
+    totalHours,
+    comment,
+    foremanId,
+    propertyName,
+    employeeTimes,
+    hoursData,
+  } = req.body;
+
+  db.serialize(() => {
+    // Update main entry row
+    db.run(
+      `UPDATE entries 
+       SET date = ?, timeIn = ?, timeOut = ?, totalHours = ?, comment = ?, foremanId = ?, propertyName = ?
+       WHERE id = ?`,
+      [date, timeIn, timeOut, totalHours, comment, foremanId, propertyName, entryId],
+      function (err) {
+        if (err) {
+          return res.status(500).json({ success: false, error: 'Failed to update entry' });
+        }
+
+        // Delete old employee times for this entry
+        db.run(`DELETE FROM entry_employee_times WHERE entryId = ?`, [entryId], (err) => {
+          if (err) return res.status(500).json({ success: false, error: 'Failed to delete old employee times' });
+
+          // Delete old employee hours for this entry
+          db.run(`DELETE FROM entry_employee_hours WHERE entryId = ?`, [entryId], (err) => {
+            if (err) return res.status(500).json({ success: false, error: 'Failed to delete old employee hours' });
+
+            // Insert new employee times
+            const insertEmployeeTime = db.prepare(`
+              INSERT INTO entry_employee_times (entryId, employeeId, timeIn, timeOut) VALUES (?, ?, ?, ?)
+            `);
+            for (const empId in employeeTimes) {
+              const times = employeeTimes[empId];
+              insertEmployeeTime.run(entryId, empId, times.timeIn, times.timeOut);
+            }
+            insertEmployeeTime.finalize();
+
+            // Insert new employee hours
+            const insertEmployeeHours = db.prepare(`
+              INSERT INTO entry_employee_hours (entryId, employeeId, category, hours) VALUES (?, ?, ?, ?)
+            `);
+            for (const empId in hoursData) {
+              const categories = hoursData[empId];
+              for (const category in categories) {
+                insertEmployeeHours.run(entryId, empId, category, categories[category]);
+              }
+            }
+            insertEmployeeHours.finalize();
+
+            // Done - respond success
+            res.json({ success: true });
+          });
+        });
+      }
+    );
+  });
+});
+
+
 // Login
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
@@ -120,7 +218,13 @@ app.post('/api/entries', (req, res) => {
 // Get latest entries
 app.get('/api/entries/latest', (req, res) => {
   console.log("GET /api/entries/latest called");
-  db.all(`SELECT * FROM entries ORDER BY id DESC LIMIT 15`, [], (err, rows) => {
+  db.all(`
+  SELECT entries.*, users.username AS foreman 
+  FROM entries 
+  LEFT JOIN users ON entries.foremanId = users.id 
+  ORDER BY entries.id DESC 
+  LIMIT 15
+`, [], (err, rows) => {
     if (err) {
       console.error('Fetch error:', err.message);
       return res.status(500).json({ success: false, error: 'Failed to load entries' });
@@ -167,6 +271,29 @@ app.get('/api/entries/:id', (req, res) => {
 });
 
 
+app.delete('/api/entries/:id', (req, res) => {
+  const entryId = req.params.id;
+
+  db.run(`DELETE FROM entries WHERE id = ?`, [entryId], function (err) {
+    if (err) {
+      console.error(err.message);
+      return res.status(500).json({ success: false, error: 'Failed to delete entry' });
+    }
+
+    // Also delete related rows in employee times and hours
+    db.run(`DELETE FROM entry_employee_times WHERE entryId = ?`, [entryId], (err) => {
+      if (err) console.error("Error deleting employee times:", err.message);
+    });
+    db.run(`DELETE FROM entry_employee_hours WHERE entryId = ?`, [entryId], (err) => {
+      if (err) console.error("Error deleting employee hours:", err.message);
+    });
+
+    res.json({ success: true });
+  });
+});
+
+
+
 // GET all users as foremen (or filter if you have roles)
 app.get('/api/foremen', (req, res) => {
   db.all('SELECT id, username FROM users ORDER BY username', [], (err, rows) => {
@@ -211,7 +338,14 @@ app.get('/api/entries', (req, res) => {
 
   let whereClause = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
 
-  const sql = `SELECT * FROM entries ${whereClause} ORDER BY date DESC LIMIT 25`;
+  const sql = `
+    SELECT entries.*, users.username AS foreman 
+    FROM entries 
+    LEFT JOIN users ON entries.foremanId = users.id 
+    ${whereClause} 
+    ORDER BY entries.date DESC 
+    LIMIT 25
+`;
 
   db.all(sql, params, (err, rows) => {
     if (err) return res.status(500).json({ success: false, error: 'Failed to fetch entries' });

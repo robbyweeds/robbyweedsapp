@@ -1,64 +1,59 @@
 import React, { useEffect, useState } from "react";
-import { Box, Flex, Text, VStack, HStack, Button, Spacer } from "@chakra-ui/react";
-import { useUser } from "../context/UserContext";
+import { Box, Flex, Text, Image, Button } from "@chakra-ui/react";
 import { useNavigate } from "react-router-dom";
 
 function HeaderBar({ title }) {
-  const { user } = useUser();
+  const [currentTime, setCurrentTime] = useState(new Date());
   const navigate = useNavigate();
 
-  const [dateTime, setDateTime] = useState({
-    date: "",
-    time: "",
-  });
+  const user = JSON.parse(localStorage.getItem("user")) || {};
 
   useEffect(() => {
-    const updateDateTime = () => {
-      const now = new Date();
-      setDateTime({
-        date: now.toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' }),
-        time: now.toLocaleTimeString(),
-      });
-    };
-
-    updateDateTime();
-    const interval = setInterval(updateDateTime, 1000);
-    return () => clearInterval(interval);
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
   }, []);
 
+  const dateString = currentTime.toLocaleDateString(undefined, {
+    weekday: "short",
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+  const timeString = currentTime.toLocaleTimeString();
+
   return (
-    <Box bg="blue.600" color="white" p={4} borderRadius="md" mb={6}>
-      <Flex align="center" mb={2}>
-        <Spacer />
-        {/* Title centered */}
-        <Text
-          fontWeight="bold"
-          fontSize="3xl"
-          textAlign="center"
-          flex="1"
-          userSelect="none"
-          whiteSpace="nowrap"
-        >
-          {title}
-        </Text>
-        <Spacer />
-        {/* Dashboard button on right */}
-        <Button
-          size="sm"
-          colorScheme="yellow"
-          onClick={() => navigate("/main")}
-          ml={4}
-        >
-          Dashboard
-        </Button>
+    <Box bg="gray.700" color="white" p={3} mb={4} boxShadow="md">
+      <Flex align="center" maxW="1200px" mx="auto">
+        <Image
+          src="/ShearonLogo.jpg"
+          alt="Logo"
+          boxSize="80px"
+          objectFit="contain"
+          mr={4}
+        />
+
+        <Box flex="1" textAlign="center">
+          <Text fontSize="3xl" fontWeight="bold" lineHeight="1.1">
+            {title}
+          </Text>
+        </Box>
+
+        <Box textAlign="right" minWidth="220px">
+          <Text fontSize="sm">{dateString}</Text>
+          <Text fontSize="lg" fontWeight="medium">
+            {timeString}
+          </Text>
+          <Text fontSize="sm" mt={1}>
+            User: {user.username || "Guest"}
+          </Text>
+        </Box>
       </Flex>
 
-      {/* User info, date, and time below */}
-      <HStack spacing={8} fontSize="md" opacity={0.9} justify="center">
-        <Text>{user ? `User: ${user.username}` : "Not logged in"}</Text>
-        <Text>{dateTime.date}</Text>
-        <Text>{dateTime.time}</Text>
-      </HStack>
+      <Flex mt={3} maxW="1200px" mx="auto" justify="flex-end">
+        <Button size="sm" colorScheme="teal" onClick={() => navigate("/main")}>
+          Return to Dashboard
+        </Button>
+      </Flex>
     </Box>
   );
 }

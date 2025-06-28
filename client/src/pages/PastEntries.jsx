@@ -17,6 +17,27 @@ import {
 import { useNavigate } from "react-router-dom";
 import HeaderBar from "../components/HeaderBar";
 
+// Helper to format date string "YYYY-MM-DD" to "Day MM/DD/YYYY"
+function formatDateWithDay(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  if (isNaN(d)) return dateStr;
+  const options = { weekday: "short", month: "2-digit", day: "2-digit", year: "numeric" };
+  return d.toLocaleDateString(undefined, options); // e.g. "Mon, 06/15/2025"
+}
+
+// Helper to format time "HH:mm" to "h:mm AM/PM"
+function formatTimeHM(timeStr) {
+  if (!timeStr) return "";
+  const [hourStr, minStr] = timeStr.split(":");
+  if (hourStr === undefined || minStr === undefined) return timeStr;
+  let hour = parseInt(hourStr, 10);
+  const minute = minStr;
+  const ampm = hour >= 12 ? "PM" : "AM";
+  hour = hour % 12 || 12; // convert 0 -> 12, 13 -> 1, etc
+  return `${hour}:${minute} ${ampm}`;
+}
+
 function PastEntries() {
   const [entries, setEntries] = useState(null);
   const [error, setError] = useState(null);
@@ -167,9 +188,9 @@ function PastEntries() {
             <Tbody>
               {entries.map((entry) => (
                 <Tr key={entry.id}>
-                  <Td>{entry.date}</Td>
-                  <Td>{entry.timeIn}</Td>
-                  <Td>{entry.timeOut}</Td>
+                  <Td>{formatDateWithDay(entry.date)}</Td>
+                  <Td>{formatTimeHM(entry.timeIn)}</Td>
+                  <Td>{formatTimeHM(entry.timeOut)}</Td>
                   <Td>{entry.totalHours}</Td>
                   <Td>{entry.comment}</Td>
                   <Td>{foremen.find((f) => f.id === entry.foremanId)?.username || "N/A"}</Td>
